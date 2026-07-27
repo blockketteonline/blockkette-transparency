@@ -1,124 +1,77 @@
-# Blockkette AI Advisor (Full‑Stack)
+# Blockkette – Non‑Custodial Wallet Core
 
-**Non‑custodial trading intelligence powering the wallet and Perps terminal – frontend + backend in one repository.**
-
----
-
-## 🧩 Repository structure
-
+**This repository contains the wallet’s core hook (`useWallet.tsx`), which handles all key generation, encryption, and storage entirely in the browser.  
+The backend and AI modules never see private keys, passwords, or any sensitive data – the wallet is fully self‑sovereign.**
 
 ---
 
-## 🧠 End‑to‑end architecture
+## 🔐 Non‑Custodial Security Model
 
-### 1. Backend (`ai_advisor.py`)
-- Pulls **live 4H OHLCV data** from 6 independent sources (Binance, Kraken, CoinGecko, …) with automatic fallback.
-- Computes **technical indicators** (EMA, RSI, ATR, volatility, trend structure) **from scratch** – pure Python, auditable, zero dependencies.
-- Runs **three battle‑tested strategies** simultaneously:
-  - Trend‑Following (EMA crossover + pullback detection)
-  - Breakout Trading (volume‑confirmed range breaks)
-  - Opening Range Breakout (ORB)
-- Validates signals with **LLMs (DeepSeek, Gemini, GLM)** while enforcing a **hard 2:1 reward:risk rule** – the AI cannot override your risk.
-- Returns concrete **long/short/wait** decisions **with exact position sizing**.
+### 1. Keys never leave the browser
+- Wallet creation (`createWallet`) uses **`generateWalletsFromSeed`** to derive keys for 31+ blockchains **directly in the user’s browser** (client‑side JavaScript).
+- The seed phrase is **never transmitted** to any server, API, or external service.
 
-### 2. Frontend (`AIAdvisorPanel.tsx`)
-- User picks **market, risk tolerance, and margin** directly inside the wallet UI.
-- Auto‑fetches a fresh 4H analysis on every asset switch.
-- Displays **price, RSI, SMA, ATR, 30‑day range**, and the full AI reasoning.
-- Buttons “Set up as Long / Short” forward the signal to the **Perps order form** – one tap to execute.
+### 2. Local encryption with user‑chosen password
+- The seed phrase and all derived private keys are **encrypted with AES‑GCM** using a password chosen by the user (see `encrypt` in `crypto.tsx`).
+- The encrypted blob is stored in **IndexedDB** (the browser’s local storage), never sent over the network.
 
-### 3. Non‑custodial wallet integration
-- The panel lives inside the wallet dashboard.
-- It calls `POST /api/ai/analyze` with **non‑sensitive** account parameters.
-- The AI responds with a trading idea – **you sign the transaction locally** with your own keys.
-- For executable orders, `POST /api/ai/decide` returns a fully‑sized position locked to 2:1 R:R.
+### 3. Password is never shared
+- The user’s password is used to **derive an encryption key** (PBKDF2). The password itself is never stored – only the encrypted data.
+- To unlock the wallet, the user provides the password **locally**, and the app decrypts the data in‑memory. The password is **never sent to any backend**.
 
----
+### 4. Zero‑knowledge architecture
+- The backend APIs (swap, AI, prices) receive **only public information** (e.g., market, margin, transaction details).  
+  They have **no access to private keys, seed phrases, or even wallet addresses** beyond what is required to broadcast a transaction.
+- Transaction signing happens **exclusively in the browser** using the decrypted private key – the backend cannot sign anything on behalf of the user.
 
-## 📡 API endpoints
+### 5. Auditable from the browser
+Anyone can verify the wallet’s security by opening the browser’s Developer Tools (F12) and:
 
-| Endpoint | Purpose | Consumer |
-|----------|---------|----------|
-| `POST /api/ai/analyze` | Indicators + AI reasoning (quick read) | `AIAdvisorPanel.tsx` |
-| `POST /api/ai/decide`  | Tradable decision with exact sizing | Perps order form, automated strategies |
-| `POST /api/ai/chat`    | Conversational AI for portfolio questions | AI chat panel |
-| `GET  /api/ai/health`  | Provider status check | DevOps / monitoring |
+- Inspecting network requests while creating or unlocking a wallet – **no network request contains the password or seed**.
+- Viewing the **IndexedDB** storage (Application > IndexedDB) and confirming the encrypted blob – it’s unintelligible without the password.
+- Checking the source code in this repository to confirm the encryption and key‑derivation logic.
 
 ---
 
-## 📐 The maths behind every indicator
+## 🧩 What’s in this repo?
 
-All technical indicators are computed **natively** – no third‑party TA libraries.  
-This makes the code auditable, portable, and ready for on‑chain verification.
+| File | Purpose |
+|------|---------|
+| `frontend/src/hooks/useWallet.tsx` | Core wallet hook – create, unlock, recover, backup, chain upgrade |
+| `frontend/src/utils/crypto.tsx` | Encryption/decryption, key derivation, password validation |
+| `frontend/src/utils/storage.tsx` | IndexedDB persistence layer |
 
-### Exponential Moving Average (EMA)
-Used for EMA20, EMA50, EMA200. The first value is seeded with a simple average.
-
-### Relative Strength Index (RSI)
-Measures volatility – used for stop‑loss placement.
-
-### Slope (Linear Regression over N bars)
-Detects trend strength on EMA series.
-
-### Daily Volatility (σ)
-Reported as a percentage.
+*(Other modules like the AI advisor, perps, and smart contracts are in separate directories.)*
 
 ---
 
-## 🤖 Machine‑Learning research – evolving beyond indicators
+## 🏛 Cryptographic Details
 
-We are not stopping at classical TA. Our team is developing an **advanced ML research pipeline** to turn this module into a self‑improving trading brain.
-
-**Immediate post‑YC goals:**
-1. **Fine‑tuned transformers** trained on:
-   - 4H order‑book snapshots from 100+ blockchains
-   - Perps liquidations, funding rates, open interest
-   - On‑chain wallet behaviour (whale moves, exchange inflows)
-
-2. **Sentiment analysis** ingesting X, Discord, Telegram, and on‑chain metrics – converting unstructured text into quantifiable features.
-
-3. **Cross‑market pattern recognition** using graph neural networks – the AI will learn that a BTC options expiry impacts SOL liquidity 12h later.
-
-4. **Reinforcement learning agent** that backtests strategies across years of data and continuously adapts to new market regimes.
-
-**Math upgrade example – from static EMA to adaptive Kalman‑filter trend**
-This dynamically adapts to volatility – faster than any fixed‑window EMA. Our research is actively integrating such models for the Pro and Enterprise tiers.
+- **Symmetric encryption:** AES‑256‑GCM  
+- **Key derivation:** PBKDF2 with 100,000 iterations  
+- **Password strength:** Enforced minimum length, uppercase, number  
+- **Seed phrase:** BIP‑39 (12‑word) used as the master seed for all chains  
 
 ---
 
-## 💎 Subscription model – powered by Genesis Token
+## 🔒 Why Blockkette cannot access user funds
 
-This AI becomes a **token‑gated premium service**:
+1. **We don’t have the seed phrase** – it’s generated locally and encrypted with a password we never receive.
+2. **We don’t have the password** – the password is never sent to our servers; it’s used only client‑side.
+3. **We can’t sign transactions** – private keys are decrypted in the browser for signing and immediately discarded from memory after use.
+4. **Our backend is stateless** – it stores no wallet data, no encrypted blobs, no user identifiers.
 
-- **Free tier** – basic indicators, 1 analysis per hour.
-- **Pro tier** – real‑time 4H signals, all three strategies, unlimited calls – **unlocked by staking GNS tokens**.
-- **Enterprise tier** – custom ML models trained on your own trading history, running on‑chain, paid for in GNS.
-
-Staking GNS grants access to the most advanced models, creating a **recurring revenue stream** for the protocol.
-
----
-
-## 🔒 Security & Auditing
-
-- All indicators and risk‑enforcement are **deterministic** – they run locally, zero external calls.
-- **Hard‑coded 2:1 R:R rule** – no AI hallucination can override it.
-- The frontend never touches private keys; it only calls public API endpoints with non‑sensitive account data.
-- Codebase is being prepared for a **professional institutional audit** (Trail of Bits / OtterSec) after YC funding.
+Every transaction is signed **exclusively by the user’s own device**. Even if the Blockkette backend were compromised, there would be nothing to steal – no keys, no passwords, no funds.
 
 ---
 
-## 🌐 Live test
+## 📡 Live Demo
 
-```bash
-curl -X POST https://blockkette.online/api/ai/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"market":"BTC-PERP","account_margin_usd":1000,"risk_tolerance":"moderate"}'
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-cd frontend
-npm install
-npm run dev
-Built by the Blockkette team. Not financial advice. Testnet only.
+The wallet and AI advisor are live on **testnet**:  
+`https://blockkette.online`
 
+You can open the site, create a wallet (completely in‑browser), and inspect network traffic to confirm that no private data leaves your machine.
 
+---
+
+*Built by the Blockkette team. Not financial advice. Testnet only.*
